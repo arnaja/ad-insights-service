@@ -1,0 +1,12 @@
+resilience4j:
+  retry:
+    instances:
+      clickServiceRetry:
+        maxAttempts: 3
+        waitDuration: 200ms
+
+  circuitbreaker:
+    instances:
+      clickServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
