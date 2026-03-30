@@ -1,8 +1,10 @@
 package com.adinsights.service;
 
+import com.adinsights.config.RoutingProperties;
 import com.adinsights.dto.MetricResponse;
 import com.adinsights.exception.AdInsightsException;
 import com.adinsights.exception.DependencyException;
+import com.adinsights.exception.ValidationException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
@@ -20,8 +23,9 @@ import static com.adinsights.utils.LogUtils.kv;
 @Slf4j
 public class AdInsightsService {
 
-    private final RedisRealtimeService redis;
-    private final CassandraHistoricalService cassandra;
+    private final RedisRealtimeService redisService;
+    private final CassandraHistoricalService cassandraService;
+    private final RoutingProperties routingProperties;
 
     private static final Logger log =
             LoggerFactory.getLogger(AdInsightsService.class);
@@ -30,20 +34,72 @@ public class AdInsightsService {
     public MetricResponse getClicks(String tenantId, String campaignId,
                                     Instant start, Instant end) {
 
+        long startTime = System.currentTimeMillis();
+
         try {
+            validate(start, end);
 
-            CompletableFuture<Integer> realtime =
-                    CompletableFuture.supplyAsync(() ->
-                            redis.getClicks(tenantId, campaignId));
+            Duration realtimeWindow =
+                    Duration.ofMinutes(routingProperties.getRealtimeWindowMinutes());
 
-            CompletableFuture<Integer> historical =
-                    CompletableFuture.supplyAsync(() ->
-                            cassandra.getClicks(tenantId, campaignId, start, end));
+            Instant threshold = Instant.now().minus(realtimeWindow);
 
+            log.info("Routing request",
+                    kv("tenantId", tenantId),
+                    kv("campaignId", campaignId),
+                    kv("realtimeWindowMinutes",
+                            routingProperties.getRealtimeWindowMinutes()));
+
+            int result;
+            String source = null;
+
+            // ✅ Fully real-time
+            if (start.isAfter(threshold)) {
+
+                source = "REAL-TIME";
+                result = redisService.getClicks(tenantId, campaignId);
+
+                log.info("Served from Redis",
+                        kv("latencyMs", latency(startTime)));
+
+            }
+            // ✅ Fully historical
+            else if (end.isBefore(threshold)) {
+
+                source = "HISTORICAL";
+                result = cassandraService.getClicks(tenantId, campaignId, start, end);
+
+                log.info("Served from Cassandra",
+                        kv("latencyMs", latency(startTime)));
+            }
+            // ✅ Hybrid
+            else {
+
+                source = "HYBRID";
+                CompletableFuture<Integer> realtimePart =
+                        CompletableFuture.supplyAsync(() ->
+                                redisService.getClicks(tenantId, campaignId));
+
+                CompletableFuture<Integer> historicalPart =
+                        CompletableFuture.supplyAsync(() ->
+                                cassandraService.getClicks(tenantId, campaignId, start, end));
+
+                log.info("Hybrid routing",
+                        kv("historicalPart", historicalPart.get()),
+                        kv("realtimePart", realtimePart.get()),
+                        kv("latencyMs", latency(startTime)));
+                result = historicalPart.get() + realtimePart.get();
+                return MetricResponse.builder()
+                        .metric("clicks")
+                        .count(realtimePart.join() + historicalPart.join())
+                        .source("HYBRID")
+                        .timestamp(Instant.now())
+                        .build();
+            }
             return MetricResponse.builder()
                     .metric("clicks")
-                    .count(realtime.join() + historical.join())
-                    .source("HYBRID")
+                    .count(result)
+                    .source(source)
                     .timestamp(Instant.now())
                     .build();
         } catch (DependencyException ex) {
@@ -51,16 +107,16 @@ public class AdInsightsService {
                     kv("tenantId", tenantId),
                     kv("campaignId", campaignId),
                     ex);
-        // fallback strategy
-        throw ex;
+            // fallback strategy
+            throw ex;
 
-    } catch (Exception ex) {
+        } catch (Exception ex) {
             log.error("Service failure",
                     kv("tenantId", tenantId),
                     kv("campaignId", campaignId),
                     ex);
-        throw new AdInsightsException("Service failure", "SERVICE_ERROR");
-    }
+            throw new AdInsightsException("Service failure", "SERVICE_ERROR");
+        }
     }
 
     public MetricResponse fallback(String t, String c,
@@ -71,5 +127,21 @@ public class AdInsightsService {
                 .source("FALLBACK")
                 .timestamp(Instant.now())
                 .build();
+    }
+    // =========================
+    // Validation
+    // =========================
+
+    private void validate(Instant start, Instant end) {
+        if (start == null || end == null) {
+            throw new ValidationException("Start and End cannot be null");
+        }
+        if (start.isAfter(end)) {
+            throw new ValidationException("Start cannot be after End");
+        }
+    }
+
+    private long latency(long startTime) {
+        return System.currentTimeMillis() - startTime;
     }
 }

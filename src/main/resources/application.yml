@@ -36,3 +36,7 @@ resilience4j:
 logging:
   level:
     root: INFO
+
+ad-insights:
+  routing:
+    realtime-window-minutes: 120
