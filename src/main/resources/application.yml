@@ -16,14 +16,28 @@ resilience4j:
     instances:
       adService:
         failureRateThreshold: 50
+      redisCB:
+        failureRateThreshold: 50
+        slidingWindowSize: 20
+      cassandraCB:
+        failureRateThreshold: 50
+        slidingWindowSize: 20
+
+  retry:
+    instances:
+      redisRetry:
+        maxAttempts: 3
+        waitDuration: 200ms
+      cassandraRetry:
+        maxAttempts: 2
+        waitDuration: 500ms
+
   bulkhead:
     instances:
       redisBulkhead:
         maxConcurrentCalls: 50
-
       cassandraBulkhead:
         maxConcurrentCalls: 30
-
   thread-pool-bulkhead:
     instances:
       redisBulkhead:

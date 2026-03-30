@@ -2,6 +2,8 @@ package com.adinsights.service;
 
 import com.adinsights.exception.DependencyException;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,8 @@ import static com.adinsights.utils.LogUtils.kv;
 
 @Service
 @RequiredArgsConstructor
+@Retry(name = "redisRetry")
+@CircuitBreaker(name = "redisCB", fallbackMethod = "fallback")
 @Bulkhead(name = "redisBulkhead", type = Bulkhead.Type.THREADPOOL)
 public class RedisRealtimeService {
 
@@ -23,8 +27,6 @@ public class RedisRealtimeService {
 
     public int getClicks(String tenantId, String campaignId) {
         try {
-
-
             String key = "clicks:" + tenantId + ":" + campaignId;
             Integer val = redisTemplate.opsForValue().get(key);
 
@@ -38,6 +40,12 @@ public class RedisRealtimeService {
                     kv("campaignId", campaignId),
                     ex);
         throw new DependencyException("Redis failure", ex);
+        }
     }
+    public int fallback(String tenantId, String campaignId,
+                        Instant start, Instant end, Throwable ex) {
+
+        log.error("Redis fallback triggered", ex);
+        return 0; // graceful degradation
     }
 }

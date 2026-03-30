@@ -119,8 +119,8 @@ public class AdInsightsService {
         }
     }
 
-    public MetricResponse fallback(String t, String c,
-                                   Instant s, Instant e, Throwable ex) {
+    public MetricResponse fallback(String tenantId, String campaignId,
+                                   Instant start, Instant end, Throwable ex) {
         return MetricResponse.builder()
                 .metric("clicks")
                 .count(0)
