@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 
-import static com.adinsights.utils.LogUtils.kv;
+import static com.adinsights.util.LogUtils.kv;
 
 @RestController
 @RequestMapping("/v1/ad")
@@ -55,6 +55,7 @@ public class AdInsightsController {
                     kv("campaignId", campaignId),
                     kv("start", start),
                     kv("end", end));
+
             if (start.isAfter(end)) {
                 throw new ValidationException("Start time cannot be after end time");
             }

@@ -9,8 +9,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "ad-insights.routing")
 public class RoutingProperties {
 
-    /**
-     * Time window (in minutes) to treat data as real-time
-     */
     private long realtimeWindowMinutes;
+    private long snowflakeWindowDays;
 }
