@@ -5,6 +5,8 @@ import com.adinsights.exception.DependencyException;
 import com.adinsights.model.CampaignClicks;
 import com.adinsights.repository.CampaignClicksRepository;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +21,8 @@ import static com.adinsights.utils.LogUtils.kv;
 
 @Service
 @RequiredArgsConstructor
+@Retry(name = "cassandraRetry")
+@CircuitBreaker(name = "cassandraCB")
 @Bulkhead(name = "cassandraBulkhead", type = Bulkhead.Type.THREADPOOL)
 public class CassandraHistoricalService {
 
