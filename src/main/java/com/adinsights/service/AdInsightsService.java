@@ -16,15 +16,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
-import static com.adinsights.utils.LogUtils.kv;
+import static com.adinsights.util.LogUtils.kv;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AdInsightsService {
 
-    private final RedisRealtimeService redisService;
-    private final CassandraHistoricalService cassandraService;
+    private final ElastiCacheRealtimeService elastiCacheRealtimeService;
+    private final DynamoDbHistoricalService dynamoDbHistoricalService;
+    private final SnowflakeAnalyticsService snowflakeAnalyticsService;
     private final RoutingProperties routingProperties;
 
     private static final Logger log =
@@ -34,7 +35,7 @@ public class AdInsightsService {
     public MetricResponse getClicks(String tenantId, String campaignId,
                                     Instant start, Instant end) {
 
-        long startTime = System.currentTimeMillis();
+        long requestStart = System.currentTimeMillis();
 
         try {
             validate(start, end);
@@ -42,60 +43,56 @@ public class AdInsightsService {
             Duration realtimeWindow =
                     Duration.ofMinutes(routingProperties.getRealtimeWindowMinutes());
 
-            Instant threshold = Instant.now().minus(realtimeWindow);
-
+            Duration analyticsWindow = Duration.ofDays(
+                    routingProperties.getSnowflakeWindowDays()
+            );
             log.info("Routing request",
                     kv("tenantId", tenantId),
                     kv("campaignId", campaignId),
-                    kv("realtimeWindowMinutes",
-                            routingProperties.getRealtimeWindowMinutes()));
+                    kv("realtimeWindow",realtimeWindow),
+                    kv("analyticsWindow",analyticsWindow));
+
+            Instant now = Instant.now();
+            Instant realtimeThreshold = now.minus(realtimeWindow);
+            Instant analyticsThreshold = now.minus(analyticsWindow);
 
             int result;
-            String source = null;
+            String source;
 
-            // ✅ Fully real-time
-            if (start.isAfter(threshold)) {
-
-                source = "REAL-TIME";
-                result = redisService.getClicks(tenantId, campaignId);
-
-                log.info("Served from Redis",
-                        kv("latencyMs", latency(startTime)));
-
+            // recent -> ElastiCache
+            if (start.isAfter(realtimeThreshold)) {
+                result = elastiCacheRealtimeService.getClicks(tenantId, campaignId);
+                source = "ELASTICACHE";
             }
-            // ✅ Fully historical
-            else if (end.isBefore(threshold)) {
-
-                source = "HISTORICAL";
-                result = cassandraService.getClicks(tenantId, campaignId, start, end);
-
-                log.info("Served from Cassandra",
-                        kv("latencyMs", latency(startTime)));
+            // very old / long-range -> Snowflake
+            else if (end.isBefore(analyticsThreshold)) {
+                result = snowflakeAnalyticsService.getClicks(tenantId, campaignId, start, end);
+                source = "SNOWFLAKE";
             }
-            // ✅ Hybrid
+            // medium-range -> DynamoDB
+            else if (end.isBefore(realtimeThreshold)) {
+                result = dynamoDbHistoricalService.getClicks(tenantId, campaignId, start, end);
+                source = "DYNAMODB";
+            }
+            // overlap recent + historical
             else {
-
-                source = "HYBRID";
+                source = "HYBRID_ELASTICACHE_DYNAMODB";
                 CompletableFuture<Integer> realtimePart =
                         CompletableFuture.supplyAsync(() ->
-                                redisService.getClicks(tenantId, campaignId));
+                                elastiCacheRealtimeService.getClicks(tenantId, campaignId));
 
                 CompletableFuture<Integer> historicalPart =
                         CompletableFuture.supplyAsync(() ->
-                                cassandraService.getClicks(tenantId, campaignId, start, end));
-
-                log.info("Hybrid routing",
-                        kv("historicalPart", historicalPart.get()),
-                        kv("realtimePart", realtimePart.get()),
-                        kv("latencyMs", latency(startTime)));
+                                dynamoDbHistoricalService.getClicks(tenantId, campaignId, start, end));
                 result = historicalPart.get() + realtimePart.get();
-                return MetricResponse.builder()
-                        .metric("clicks")
-                        .count(realtimePart.join() + historicalPart.join())
-                        .source("HYBRID")
-                        .timestamp(Instant.now())
-                        .build();
             }
+            log.info("Completed clicks query",
+                    kv("tenantId", tenantId),
+                    kv("campaignId", campaignId),
+                    kv("source", source),
+                    kv("latencyMs", System.currentTimeMillis() - requestStart),
+                    kv("count", result));
+
             return MetricResponse.builder()
                     .metric("clicks")
                     .count(result)
@@ -139,9 +136,5 @@ public class AdInsightsService {
         if (start.isAfter(end)) {
             throw new ValidationException("Start cannot be after End");
         }
-    }
-
-    private long latency(long startTime) {
-        return System.currentTimeMillis() - startTime;
     }
 }

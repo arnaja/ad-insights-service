@@ -1,34 +1,74 @@
-spring:
-  kafka:
-    bootstrap-servers: ${MSK_BROKERS}
+server:
+  port: 8080
 
-  cassandra:
-    keyspace-name: ad_insights
-    contact-points: ${CASSANDRA_HOST}
+spring:
+  application:
+    name: ad-insights
+
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      ssl: true
+      host: ${ELASTICACHE_HOST:localhost}
+      port: ${ELASTICACHE_PORT:6379}
+      ssl:
+        enabled: ${ELASTICACHE_SSL:false}
+
+  datasource:
+    url: ${SNOWFLAKE_URL:jdbc:snowflake://account.region.snowflakecomputing.com/?db=ANALYTICS&schema=PUBLIC&warehouse=COMPUTE_WH}
+    username: ${SNOWFLAKE_USER:demo}
+    password: ${SNOWFLAKE_PASSWORD:demo}
+    driver-class-name: net.snowflake.client.jdbc.SnowflakeDriver
+
+aws:
+  region: ${AWS_REGION:ap-south-1}
+  dynamodb:
+    metrics-table: ${DYNAMODB_METRICS_TABLE:ad-insights-metrics}
+
+ad-insights:
+  routing:
+    realtime-window-minutes: ${REALTIME_WINDOW_MINUTES:120}
+    snowflake-window-days: ${SNOWFLAKE_WINDOW_DAYS:30}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 resilience4j:
   circuitbreaker:
     instances:
-      adService:
-        failureRateThreshold: 50
       redisCB:
-        failureRateThreshold: 50
+        slidingWindowType: COUNT_BASED
         slidingWindowSize: 20
-      cassandraCB:
+        minimumNumberOfCalls: 10
         failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+      dynamoCB:
+        slidingWindowType: COUNT_BASED
         slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+      snowflakeCB:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
 
   retry:
     instances:
       redisRetry:
         maxAttempts: 3
         waitDuration: 200ms
-      cassandraRetry:
+      dynamoRetry:
+        maxAttempts: 2
+        waitDuration: 300ms
+      snowflakeRetry:
         maxAttempts: 2
         waitDuration: 500ms
 
@@ -36,21 +76,14 @@ resilience4j:
     instances:
       redisBulkhead:
         maxConcurrentCalls: 50
-      cassandraBulkhead:
+        maxWaitDuration: 50ms
+      dynamoBulkhead:
         maxConcurrentCalls: 30
-  thread-pool-bulkhead:
-    instances:
-      redisBulkhead:
-        maxThreadPoolSize: 20
-        coreThreadPoolSize: 10
+        maxWaitDuration: 100ms
+      snowflakeBulkhead:
+        maxConcurrentCalls: 10
+        maxWaitDuration: 200ms
 
-      cassandraBulkhead:
-        maxThreadPoolSize: 20
-
-logging:
-  level:
-    root: INFO
-
-ad-insights:
-  routing:
-    realtime-window-minutes: 120
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

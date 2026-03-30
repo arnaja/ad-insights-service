@@ -1,4 +1,6 @@
 
 FROM openjdk:17-jdk-slim
-COPY target/ad-insights-service.jar app.jar
-ENTRYPOINT ["java","-jar","/app.jar"]
+WORKDIR /app
+COPY target/ad-insights-1.0.0.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

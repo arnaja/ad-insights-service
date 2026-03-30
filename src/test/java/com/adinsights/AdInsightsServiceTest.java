@@ -3,8 +3,8 @@ package com.adinsights;
 import com.adinsights.config.RoutingProperties;
 import com.adinsights.dto.MetricResponse;
 import com.adinsights.service.AdInsightsService;
-import com.adinsights.service.CassandraHistoricalService;
-import com.adinsights.service.RedisRealtimeService;
+import com.adinsights.service.DynamoDbHistoricalService;
+import com.adinsights.service.ElastiCacheRealtimeService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,20 +21,20 @@ import static org.mockito.Mockito.when;
 class AdInsightsServiceTest {
 
     @Mock
-    private RedisRealtimeService redisService;
+    private ElastiCacheRealtimeService elastiCacheRealtimeService;
 
     @Mock
     RoutingProperties routingProperties;
 
     @Mock
-    private CassandraHistoricalService cassandraService;
+    private DynamoDbHistoricalService dynamoDbHistoricalService;
 
     @InjectMocks
     private AdInsightsService service;
 
     @Test
     void testRealtimePath() {
-        when(redisService.getClicks(any(), any())).thenReturn(100);
+        when(elastiCacheRealtimeService.getClicks(any(), any())).thenReturn(100);
         when(routingProperties.getRealtimeWindowMinutes()).thenReturn(10L);
 
         MetricResponse response = service.getClicks(
@@ -42,6 +42,6 @@ class AdInsightsServiceTest {
         );
 
         assertEquals(100, response.getCount());
-        assertEquals("REAL-TIME", response.getSource());
+        assertEquals("ELASTICACHE", response.getSource());
     }
 }
