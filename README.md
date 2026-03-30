@@ -1,23 +1,21 @@
+# Ad Insights Platform
 
-# Ad Insights Service
+## Overview
+Real-time + historical ad analytics platform using AWS-native services.
 
-## Architecture
-Kafka -> Flink -> Redis -> API Service -> Client
+## Tech Stack
+- Spring Boot
+- Redis (ElastiCache)
+- Cassandra (Keyspaces)
+- Kafka (MSK)
+- Flink (stream processing)
 
-## API
-GET /ad/{campaignId}/clicks
+## Features
+- Smart query routing
+- Circuit breaker + retry
+- Async processing
+- AWS-native architecture
 
-curl:
-curl -H "X-Tenant-ID: t1" http://localhost:8080/ad/123/clicks
-
-## Scaling
-- Horizontal scaling (K8s HPA)
-- Redis caching
-- Kafka partitioning
-
-## Trade-offs
-- Real-time vs accuracy (eventual consistency)
-- Cache staleness vs latency
-
-## Observability
-- Prometheus metrics via /actuator/prometheus
+## Run
+mvn clean install
+java -jar target/ad-insights-service-1.0.0.jar
