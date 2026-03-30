@@ -1,12 +1,38 @@
-resilience4j:
-  retry:
-    instances:
-      clickServiceRetry:
-        maxAttempts: 3
-        waitDuration: 200ms
+spring:
+  kafka:
+    bootstrap-servers: ${MSK_BROKERS}
 
+  cassandra:
+    keyspace-name: ad_insights
+    contact-points: ${CASSANDRA_HOST}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      ssl: true
+
+resilience4j:
   circuitbreaker:
     instances:
-      clickServiceCB:
-        slidingWindowSize: 10
+      adService:
         failureRateThreshold: 50
+  bulkhead:
+    instances:
+      redisBulkhead:
+        maxConcurrentCalls: 50
+
+      cassandraBulkhead:
+        maxConcurrentCalls: 30
+
+  thread-pool-bulkhead:
+    instances:
+      redisBulkhead:
+        maxThreadPoolSize: 20
+        coreThreadPoolSize: 10
+
+      cassandraBulkhead:
+        maxThreadPoolSize: 20
+
+logging:
+  level:
+    root: INFO

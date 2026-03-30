@@ -1,5 +1,5 @@
 
-package com.example.adinsights;
+package com.adinsights;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
