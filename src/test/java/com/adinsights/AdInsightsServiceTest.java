@@ -1,5 +1,6 @@
 package com.adinsights;
 
+import com.adinsights.config.RoutingProperties;
 import com.adinsights.dto.MetricResponse;
 import com.adinsights.service.AdInsightsService;
 import com.adinsights.service.CassandraHistoricalService;
@@ -23,6 +24,9 @@ class AdInsightsServiceTest {
     private RedisRealtimeService redisService;
 
     @Mock
+    RoutingProperties routingProperties;
+
+    @Mock
     private CassandraHistoricalService cassandraService;
 
     @InjectMocks
@@ -31,12 +35,13 @@ class AdInsightsServiceTest {
     @Test
     void testRealtimePath() {
         when(redisService.getClicks(any(), any())).thenReturn(100);
+        when(routingProperties.getRealtimeWindowMinutes()).thenReturn(10L);
 
         MetricResponse response = service.getClicks(
                 "t1", "c1", Instant.now(), Instant.now()
         );
 
         assertEquals(100, response.getCount());
-        assertEquals("HYBRID", response.getSource());
+        assertEquals("REAL-TIME", response.getSource());
     }
 }
